@@ -1,7 +1,7 @@
 // Trend Watch service worker
 // Caches the app shell (HTML/manifest/icons/chart library) for fast, offline-tolerant
 // loading, but NEVER caches Alpaca API responses — market data must always be live.
-const CACHE_VERSION = "trend-watch-v1";
+const CACHE_VERSION = "trend-watch-v2";
 const SHELL_ASSETS = [
   "./alpaca-watchlist.html",
   "./manifest.json",
