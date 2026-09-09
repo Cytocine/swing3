@@ -207,7 +207,11 @@
     color: var(--text-dim); cursor: pointer;
   }
   .dt-btn.active { background: #FFD166; border-color: #FFD166; color: #1A1300; }
+  .dt-btn.long-btn.active { background: var(--bull); border-color: var(--bull); color: #04140D; }
+  .dt-btn.short-btn.active { background: var(--bear); border-color: var(--bear); color: #210907; }
   .dt-btn:disabled { opacity: 0.4; }
+  .draw-hint { margin: 0 14px 8px; font-size: 11.5px; color: var(--text-faint); line-height: 1.5; display: none; }
+  .draw-hint.show { display: block; }
   .chart-loading {
     position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
     color: var(--text-faint); font-size: 13px;
@@ -339,9 +343,12 @@
   <div class="draw-tools">
     <button class="dt-btn" id="drawTrendBtn" title="Draw a trendline">／ Trend</button>
     <button class="dt-btn" id="drawHlineBtn" title="Draw a horizontal line">— Line</button>
+    <button class="dt-btn long-btn" id="drawLongBtn" title="Drop a long entry/target/stop zone">▲ Long</button>
+    <button class="dt-btn short-btn" id="drawShortBtn" title="Drop a short entry/target/stop zone">▼ Short</button>
     <button class="dt-btn" id="drawClearBtn" title="Clear drawings on this chart">Clear</button>
     <button class="dt-btn" id="exportImgBtn" title="Export chart as an image" style="margin-left:auto;">⬇ Export</button>
   </div>
+  <div class="draw-hint" id="drawHint">Tap the chart to drop a zone. Drag the white entry line to move the whole zone, the green line to adjust target, the red line to adjust stop, or the right edge to resize. Tap ✕ to delete a zone.</div>
   <div class="chart-area">
     <div id="chartContainer"></div>
     <canvas id="cloudCanvas"></canvas>
@@ -378,10 +385,13 @@
   let cloudData = null; // { points: [{time, upper, lower}], canvas }
   let currentChartSym = null;
 
-  // drawing tools: symbol -> array of { type: "trend", t1,p1,t2,p2 } | { type: "hline", price }
+  // drawing tools: symbol -> array of
+  //   { type: "trend", t1,p1,t2,p2 } | { type: "hline", price } |
+  //   { type: "position", id, dir: "long"|"short", entryLogical, widthBars, entryPrice, targetPrice, stopPrice }
   let drawings = {};
-  let drawMode = null;      // null | "trend" | "hline"
+  let drawMode = null;      // null | "trend" | "hline" | "long" | "short"
   let pendingDraw = null;   // in-progress trendline while dragging
+  let posDrag = null;       // in-progress position zone drag: { idx, handle, startPrice, startLogical }
 
   const DEFAULT_SYMBOLS = ["AAPL","AA", "AAL", "ABBV", "ABT", "ACB", "ACN", "ADBE", "ADSK", "AFRM", "AGNC",
       "ALHC", "AMD", "AMZN", "APP", "ARM", "ASPI", "ASTS", "AVDL", "AXON", "B",
@@ -904,6 +914,56 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
+  // ---------- entry/stop/target position zones ----------
+  function fmtPct(p) {
+    return (p >= 0 ? "+" : "") + p.toFixed(2) + "%";
+  }
+
+  function positionGeom(dr) {
+    if (!chartInst || !candleSeries) return null;
+    try {
+      const ts = chartInst.timeScale();
+      const canvas = document.getElementById("cloudCanvas");
+      const dpr = window.devicePixelRatio || 1;
+      const w = canvas.width / dpr;
+      const x1 = ts.logicalToCoordinate(dr.entryLogical);
+      if (x1 == null) return null;
+      let x2 = ts.logicalToCoordinate(dr.entryLogical + dr.widthBars);
+      if (x2 == null) x2 = Math.max(x1 + 30, w - 8);
+      x2 = Math.min(x2, w - 4);
+      const yEntry = candleSeries.priceToCoordinate(dr.entryPrice);
+      const yTarget = candleSeries.priceToCoordinate(dr.targetPrice);
+      const yStop = candleSeries.priceToCoordinate(dr.stopPrice);
+      if (yEntry == null || yTarget == null || yStop == null) return null;
+      return { x1, x2, yEntry, yTarget, yStop };
+    } catch (e) { return null; }
+  }
+
+  function hitTestPositions(x, y) {
+    const list = (currentChartSym && drawings[currentChartSym]) || [];
+    for (let i = list.length - 1; i >= 0; i--) {
+      const dr = list[i];
+      if (dr.type !== "position") continue;
+      const g = positionGeom(dr);
+      if (!g) continue;
+      const { x1, x2, yEntry, yTarget, yStop } = g;
+      const topY = Math.min(yEntry, yTarget, yStop);
+      const botY = Math.max(yEntry, yTarget, yStop);
+      // delete handle: small hit box above the top-left corner
+      if (x >= x1 - 6 && x <= x1 + 18 && y >= topY - 24 && y <= topY - 4) {
+        return { idx: i, dr, handle: "delete" };
+      }
+      if (x < x1 - 10 || x > x2 + 10) continue;
+      if (Math.abs(x - x2) <= 9 && y >= topY - 4 && y <= botY + 4) {
+        return { idx: i, dr, handle: "right" };
+      }
+      if (Math.abs(y - yEntry) <= 9) return { idx: i, dr, handle: "entry" };
+      if (Math.abs(y - yTarget) <= 9) return { idx: i, dr, handle: "target" };
+      if (Math.abs(y - yStop) <= 9) return { idx: i, dr, handle: "stop" };
+    }
+    return null;
+  }
+
   function drawCloud() {
     const canvas = document.getElementById("cloudCanvas");
     const ctx = canvas.getContext("2d");
@@ -968,6 +1028,70 @@
         ctx.setLineDash(isPending ? [5, 4] : []);
         ctx.stroke();
         ctx.setLineDash([]);
+      } else if (dr.type === "position") {
+        const g = positionGeom(dr);
+        if (!g) continue;
+        const { x1, x2, yEntry, yTarget, yStop } = g;
+        const boxW = Math.max(1, x2 - x1);
+
+        ctx.fillStyle = "rgba(52,211,153,0.22)";
+        ctx.fillRect(x1, Math.min(yEntry, yTarget), boxW, Math.abs(yTarget - yEntry));
+        ctx.fillStyle = "rgba(244,104,92,0.22)";
+        ctx.fillRect(x1, Math.min(yEntry, yStop), boxW, Math.abs(yStop - yEntry));
+
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = "rgba(52,211,153,0.55)";
+        ctx.strokeRect(x1, Math.min(yEntry, yTarget), boxW, Math.abs(yTarget - yEntry));
+        ctx.strokeStyle = "rgba(244,104,92,0.55)";
+        ctx.strokeRect(x1, Math.min(yEntry, yStop), boxW, Math.abs(yStop - yEntry));
+
+        // entry line
+        ctx.beginPath();
+        ctx.moveTo(x1, yEntry); ctx.lineTo(x2, yEntry);
+        ctx.strokeStyle = "#E7EAF2"; ctx.lineWidth = 1.5; ctx.setLineDash([4, 3]);
+        ctx.stroke(); ctx.setLineDash([]);
+        // target line
+        ctx.beginPath();
+        ctx.moveTo(x1, yTarget); ctx.lineTo(x2, yTarget);
+        ctx.strokeStyle = "#34D399"; ctx.lineWidth = 1.5;
+        ctx.stroke();
+        // stop line
+        ctx.beginPath();
+        ctx.moveTo(x1, yStop); ctx.lineTo(x2, yStop);
+        ctx.strokeStyle = "#F4685C"; ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        // labels
+        const rewardPct = (dr.targetPrice / dr.entryPrice - 1) * 100 * (dr.dir === "long" ? 1 : -1);
+        const riskPct = (dr.stopPrice / dr.entryPrice - 1) * 100 * (dr.dir === "long" ? -1 : 1);
+        const rr = riskPct > 0 ? (rewardPct / riskPct) : null;
+        ctx.font = "10.5px -apple-system, sans-serif";
+        ctx.textAlign = "left";
+        ctx.fillStyle = "#E7EAF2";
+        ctx.fillText((dr.dir === "long" ? "▲ LONG " : "▼ SHORT ") + fmtPrice(dr.entryPrice), x2 + 5, yEntry + 3);
+        ctx.fillStyle = "#34D399";
+        ctx.fillText("Target " + fmtPrice(dr.targetPrice) + " (" + fmtPct(rewardPct) + ")", x2 + 5, yTarget + 3);
+        ctx.fillStyle = "#F4685C";
+        ctx.fillText("Stop " + fmtPrice(dr.stopPrice) + " (" + fmtPct(-Math.abs(riskPct)) + ")", x2 + 5, yStop + 3);
+        if (rr != null) {
+          ctx.fillStyle = "var(--text-dim)";
+          ctx.fillStyle = "#8B92A5";
+          const midY = (yTarget + yStop) / 2;
+          ctx.fillText("R:R " + rr.toFixed(2), x2 + 5, midY + 3);
+        }
+
+        // delete handle (top-left corner)
+        const topY = Math.min(yEntry, yTarget, yStop);
+        ctx.beginPath();
+        ctx.arc(x1 + 6, topY - 12, 8, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(23,27,35,0.9)";
+        ctx.fill();
+        ctx.strokeStyle = "#8B92A5"; ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.fillStyle = "#C9A24B";
+        ctx.textAlign = "center";
+        ctx.fillText("✕", x1 + 6, topY - 8);
+        ctx.textAlign = "left";
       }
     }
   }
@@ -1118,9 +1242,13 @@
   function setDrawMode(mode) {
     drawMode = (drawMode === mode) ? null : mode;
     pendingDraw = null;
+    posDrag = null;
     document.getElementById("drawTrendBtn").classList.toggle("active", drawMode === "trend");
     document.getElementById("drawHlineBtn").classList.toggle("active", drawMode === "hline");
+    document.getElementById("drawLongBtn").classList.toggle("active", drawMode === "long");
+    document.getElementById("drawShortBtn").classList.toggle("active", drawMode === "short");
     document.getElementById("drawLayer").style.pointerEvents = drawMode ? "auto" : "none";
+    document.getElementById("drawHint").classList.toggle("show", drawMode === "long" || drawMode === "short");
     drawCloud();
   }
 
@@ -1137,8 +1265,90 @@
   (function setupDrawing() {
     const layer = document.getElementById("drawLayer");
 
+    function layerXY(clientX, clientY) {
+      const rect = layer.getBoundingClientRect();
+      return { x: clientX - rect.left, y: clientY - rect.top };
+    }
+
     layer.addEventListener("pointerdown", (e) => {
       if (!drawMode || !chartInst || !candleSeries || !currentChartSym) return;
+
+      if (drawMode === "long" || drawMode === "short") {
+        const { x, y } = layerXY(e.clientX, e.clientY);
+        const hit = hitTestPositions(x, y);
+
+        if (hit && hit.handle === "delete") {
+          drawings[currentChartSym].splice(hit.idx, 1);
+          saveDrawings();
+          drawCloud();
+          return;
+        }
+
+        if (hit) {
+          posDrag = { idx: hit.idx, handle: hit.handle };
+          layer.setPointerCapture(e.pointerId);
+
+          const onMove = (ev) => {
+            if (!posDrag) return;
+            const list = drawings[currentChartSym];
+            const dr = list && list[posDrag.idx];
+            if (!dr) return;
+            const p = layerXY(ev.clientX, ev.clientY);
+            if (posDrag.handle === "right") {
+              let logical;
+              try { logical = chartInst.timeScale().coordinateToLogical(p.x); } catch (err) { logical = null; }
+              if (logical != null) {
+                dr.widthBars = Math.max(3, Math.min(200, Math.round(logical - dr.entryLogical)));
+              }
+            } else {
+              const newPrice = candleSeries.coordinateToPrice(p.y);
+              if (newPrice == null) return;
+              if (posDrag.handle === "entry") {
+                const delta = newPrice - dr.entryPrice;
+                dr.entryPrice = newPrice;
+                dr.targetPrice += delta;
+                dr.stopPrice += delta;
+              } else if (posDrag.handle === "target") {
+                dr.targetPrice = newPrice;
+              } else if (posDrag.handle === "stop") {
+                dr.stopPrice = newPrice;
+              }
+            }
+            drawCloud();
+          };
+          const onUp = () => {
+            layer.removeEventListener("pointermove", onMove);
+            layer.removeEventListener("pointerup", onUp);
+            if (posDrag) saveDrawings();
+            posDrag = null;
+            drawCloud();
+          };
+          layer.addEventListener("pointermove", onMove);
+          layer.addEventListener("pointerup", onUp);
+          return;
+        }
+
+        // no existing zone hit — drop a new one at the tap point with sensible defaults
+        let logical;
+        try { logical = chartInst.timeScale().coordinateToLogical(x); } catch (err) { logical = null; }
+        const price = candleSeries.coordinateToPrice(y);
+        if (logical == null || price == null) return;
+        const dir = drawMode;
+        const riskPct = 0.015, rewardPct = 0.03;
+        const stopPrice = dir === "long" ? price * (1 - riskPct) : price * (1 + riskPct);
+        const targetPrice = dir === "long" ? price * (1 + rewardPct) : price * (1 - rewardPct);
+        if (!drawings[currentChartSym]) drawings[currentChartSym] = [];
+        drawings[currentChartSym].push({
+          type: "position",
+          id: "p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+          dir, entryLogical: logical, widthBars: 18,
+          entryPrice: price, targetPrice, stopPrice
+        });
+        saveDrawings();
+        drawCloud();
+        return;
+      }
+
       const { time, price } = clearChartToTimePrice(e.clientX, e.clientY);
       if (time == null || price == null) return;
 
@@ -1312,6 +1522,8 @@
 
   document.getElementById("drawTrendBtn").addEventListener("click", () => setDrawMode("trend"));
   document.getElementById("drawHlineBtn").addEventListener("click", () => setDrawMode("hline"));
+  document.getElementById("drawLongBtn").addEventListener("click", () => setDrawMode("long"));
+  document.getElementById("drawShortBtn").addEventListener("click", () => setDrawMode("short"));
   document.getElementById("drawClearBtn").addEventListener("click", () => {
     if (!currentChartSym || !drawings[currentChartSym] || !drawings[currentChartSym].length) return;
     if (confirm("Clear all drawings on " + currentChartSym + "?")) {
