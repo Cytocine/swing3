@@ -89,6 +89,16 @@
   .toolrow .meta { font-size: 12px; color: var(--text-faint); }
   .toolrow .actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
+  .progress-wrap {
+    height: 3px; margin: 0 14px 10px; border-radius: 3px;
+    background: var(--surface-2); overflow: hidden; display: none;
+  }
+  .progress-wrap.show { display: block; }
+  .progress-fill {
+    height: 100%; width: 0%; background: var(--accent);
+    transition: width 0.25s ease;
+  }
+
   .banner {
     margin: 0 14px 14px; padding: 12px 14px; border-radius: 10px;
     background: var(--bear-dim); border: 1px solid #6B2E29;
@@ -188,6 +198,16 @@
   .chart-area { flex: 1; position: relative; min-height: 0; }
   #chartContainer { position: absolute; inset: 0; }
   #cloudCanvas { position: absolute; inset: 0; pointer-events: none; }
+  #drawLayer { position: absolute; inset: 0; pointer-events: none; touch-action: none; }
+
+  .draw-tools { display: flex; gap: 8px; padding: 0 14px 8px; flex-wrap: wrap; }
+  .dt-btn {
+    padding: 6px 11px; font-size: 12px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--surface-2);
+    color: var(--text-dim); cursor: pointer;
+  }
+  .dt-btn.active { background: #FFD166; border-color: #FFD166; color: #1A1300; }
+  .dt-btn:disabled { opacity: 0.4; }
   .chart-loading {
     position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
     color: var(--text-faint); font-size: 13px;
@@ -281,6 +301,8 @@
     </div>
   </div>
 
+  <div class="progress-wrap" id="progressWrap"><div class="progress-fill" id="progressFill"></div></div>
+
   <div class="list" id="listHost"></div>
 
   <footer>
@@ -314,9 +336,16 @@
     <span><i style="background:linear-gradient(90deg,#34D39955,#F4685C55)"></i>80/20 cloud</span>
     <span><i class="hollow-swatch"></i>Hollow = close &gt; open</span>
   </div>
+  <div class="draw-tools">
+    <button class="dt-btn" id="drawTrendBtn" title="Draw a trendline">／ Trend</button>
+    <button class="dt-btn" id="drawHlineBtn" title="Draw a horizontal line">— Line</button>
+    <button class="dt-btn" id="drawClearBtn" title="Clear drawings on this chart">Clear</button>
+    <button class="dt-btn" id="exportImgBtn" title="Export chart as an image" style="margin-left:auto;">⬇ Export</button>
+  </div>
   <div class="chart-area">
     <div id="chartContainer"></div>
     <canvas id="cloudCanvas"></canvas>
+    <div id="drawLayer"></div>
     <div class="chart-loading" id="chartLoading">Loading chart…</div>
   </div>
   <div class="chart-controls">
@@ -347,6 +376,12 @@
   let chartInst = null, candleSeries = null, ema34Series = null, ema65Series = null;
   let chartIndex = 0, playTimer = null;
   let cloudData = null; // { points: [{time, upper, lower}], canvas }
+  let currentChartSym = null;
+
+  // drawing tools: symbol -> array of { type: "trend", t1,p1,t2,p2 } | { type: "hline", price }
+  let drawings = {};
+  let drawMode = null;      // null | "trend" | "hline"
+  let pendingDraw = null;   // in-progress trendline while dragging
 
   const DEFAULT_SYMBOLS = ["AAPL","AA", "AAL", "ABBV", "ABT", "ACB", "ACN", "ADBE", "ADSK", "AFRM", "AGNC",
       "ALHC", "AMD", "AMZN", "APP", "ARM", "ASPI", "ASTS", "AVDL", "AXON", "B",
@@ -397,6 +432,8 @@
     const w = await storageGet("watchlist");
     if (w) { try { symbols = JSON.parse(w); } catch (e) { symbols = DEFAULT_SYMBOLS.slice(); } }
     else { symbols = DEFAULT_SYMBOLS.slice(); }
+    const d = await storageGet("drawings");
+    if (d) { try { drawings = JSON.parse(d); } catch (e) { drawings = {}; } }
   }
 
   async function saveSettings() {
@@ -407,6 +444,10 @@
 
   async function saveWatchlist() {
     await storageSet("watchlist", JSON.stringify(symbols));
+  }
+
+  async function saveDrawings() {
+    await storageSet("drawings", JSON.stringify(drawings));
   }
 
   // ---------- banners ----------
@@ -676,7 +717,11 @@
     }
     clearBanners();
     const btn = document.getElementById("refreshBtn");
+    const progWrap = document.getElementById("progressWrap");
+    const progFill = document.getElementById("progressFill");
     btn.disabled = true;
+    progWrap.classList.add("show");
+    progFill.style.width = "0%";
 
     symbols.forEach(sym => { signals[sym] = { status: "loading" }; });
     render();
@@ -693,10 +738,11 @@
 
     let corsFailure = false;
     let authFailure = false;
+    let downloaded = 0;
 
     for (let b = 0; b < batches.length; b++) {
       const batch = batches[b];
-      btn.textContent = "Refreshing… (" + (b + 1) + "/" + batches.length + ")";
+      btn.textContent = "Refreshing… (" + downloaded + "/" + symbols.length + ")";
       try {
         const barsMap = await fetchDailyBarsBatch(batch, startStr, endStr);
         for (const sym of batch) {
@@ -712,11 +758,14 @@
         }
         batch.forEach(sym => { signals[sym] = { status: "error", message: e.message }; });
       }
+      downloaded += batch.length;
+      progFill.style.width = Math.round((downloaded / symbols.length) * 100) + "%";
       render();
     }
 
     btn.disabled = false;
     btn.textContent = "Refresh all";
+    setTimeout(() => { progWrap.classList.remove("show"); progFill.style.width = "0%"; }, 400);
     document.getElementById("lastUpdated").textContent = "Updated " + new Date().toLocaleTimeString();
     if (authFailure) {
       showBanner(
@@ -859,32 +908,73 @@
     const canvas = document.getElementById("cloudCanvas");
     const ctx = canvas.getContext("2d");
     const dpr = window.devicePixelRatio || 1;
-    ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
-    if (!chartInst || !candleSeries || !cloudData || !cloudData.points.length) return;
+    const w = canvas.width / dpr, h = canvas.height / dpr;
+    ctx.clearRect(0, 0, w, h);
+    if (!chartInst || !candleSeries) return;
 
-    const pts = cloudData.points
-      .map(p => ({
-        x: chartInst.timeScale().timeToCoordinate(p.time),
-        upper: candleSeries.priceToCoordinate(p.upper),
-        lower: candleSeries.priceToCoordinate(p.lower),
-        bullish: p.bullish
-      }))
-      .filter(p => p.x !== null && p.upper !== null && p.lower !== null);
+    if (cloudData && cloudData.points.length) {
+      const pts = cloudData.points
+        .map(p => ({
+          x: chartInst.timeScale().timeToCoordinate(p.time),
+          upper: candleSeries.priceToCoordinate(p.upper),
+          lower: candleSeries.priceToCoordinate(p.lower),
+          bullish: p.bullish
+        }))
+        .filter(p => p.x !== null && p.upper !== null && p.lower !== null);
 
-    for (let i = 0; i < pts.length - 1; i++) {
-      const a = pts[i], b = pts[i + 1];
-      ctx.beginPath();
-      ctx.moveTo(a.x, a.upper);
-      ctx.lineTo(b.x, b.upper);
-      ctx.lineTo(b.x, b.lower);
-      ctx.lineTo(a.x, a.lower);
-      ctx.closePath();
-      ctx.fillStyle = a.bullish ? "rgba(52,211,153,0.16)" : "rgba(244,104,92,0.16)";
-      ctx.fill();
+      for (let i = 0; i < pts.length - 1; i++) {
+        const a = pts[i], b = pts[i + 1];
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.upper);
+        ctx.lineTo(b.x, b.upper);
+        ctx.lineTo(b.x, b.lower);
+        ctx.lineTo(a.x, a.lower);
+        ctx.closePath();
+        ctx.fillStyle = a.bullish ? "rgba(52,211,153,0.16)" : "rgba(244,104,92,0.16)";
+        ctx.fill();
+      }
+    }
+
+    // user drawings (trendlines + horizontal lines), plus a live trendline while dragging
+    const list = ((currentChartSym && drawings[currentChartSym]) || []).concat(pendingDraw ? [pendingDraw] : []);
+    for (const dr of list) {
+      const isPending = dr === pendingDraw;
+      if (dr.type === "hline") {
+        const y = candleSeries.priceToCoordinate(dr.price);
+        if (y == null) continue;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(w, y);
+        ctx.strokeStyle = "#FFD166";
+        ctx.lineWidth = 1.25;
+        ctx.setLineDash([]);
+        ctx.stroke();
+        ctx.fillStyle = "#FFD166";
+        ctx.font = "11px -apple-system, sans-serif";
+        ctx.textAlign = "right";
+        ctx.fillText(fmtPrice(dr.price), w - 4, y - 4);
+        ctx.textAlign = "left";
+      } else if (dr.type === "trend") {
+        const x1 = chartInst.timeScale().timeToCoordinate(dr.t1);
+        const y1 = candleSeries.priceToCoordinate(dr.p1);
+        const x2 = chartInst.timeScale().timeToCoordinate(dr.t2);
+        const y2 = candleSeries.priceToCoordinate(dr.p2);
+        if (x1 == null || y1 == null || x2 == null || y2 == null) continue;
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.strokeStyle = isPending ? "rgba(255,209,102,0.65)" : "#FFD166";
+        ctx.lineWidth = 1.75;
+        ctx.setLineDash(isPending ? [5, 4] : []);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
     }
   }
 
   async function renderChartFor(sym) {
+    currentChartSym = sym;
+    pendingDraw = null;
     document.getElementById("cxSym").textContent = sym;
     const currentList = longsOnly ? symbols.filter(s => signals[s] && signals[s].state === "long") : symbols;
     const activeIdx = currentList.indexOf(sym);
@@ -1008,6 +1098,7 @@
 
   function closeChart() {
     stopPlay();
+    if (drawMode) setDrawMode(drawMode); // toggles it off and disables the pointer layer
     document.getElementById("chartModal").classList.remove("open");
   }
 
@@ -1021,6 +1112,125 @@
   function stopPlay() {
     if (playTimer) { clearInterval(playTimer); playTimer = null; }
     document.getElementById("chartPlayBtn").textContent = "▶";
+  }
+
+  // ---------- drawing tools ----------
+  function setDrawMode(mode) {
+    drawMode = (drawMode === mode) ? null : mode;
+    pendingDraw = null;
+    document.getElementById("drawTrendBtn").classList.toggle("active", drawMode === "trend");
+    document.getElementById("drawHlineBtn").classList.toggle("active", drawMode === "hline");
+    document.getElementById("drawLayer").style.pointerEvents = drawMode ? "auto" : "none";
+    drawCloud();
+  }
+
+  function clearChartToTimePrice(clientX, clientY) {
+    const layer = document.getElementById("drawLayer");
+    const rect = layer.getBoundingClientRect();
+    const x = clientX - rect.left, y = clientY - rect.top;
+    return {
+      time: chartInst.timeScale().coordinateToTime(x),
+      price: candleSeries.coordinateToPrice(y)
+    };
+  }
+
+  (function setupDrawing() {
+    const layer = document.getElementById("drawLayer");
+
+    layer.addEventListener("pointerdown", (e) => {
+      if (!drawMode || !chartInst || !candleSeries || !currentChartSym) return;
+      const { time, price } = clearChartToTimePrice(e.clientX, e.clientY);
+      if (time == null || price == null) return;
+
+      if (drawMode === "hline") {
+        if (!drawings[currentChartSym]) drawings[currentChartSym] = [];
+        drawings[currentChartSym].push({ type: "hline", price });
+        saveDrawings();
+        drawCloud();
+        return;
+      }
+
+      // trendline: drag from first tap/click to release point
+      pendingDraw = { type: "trend", t1: time, p1: price, t2: time, p2: price };
+      layer.setPointerCapture(e.pointerId);
+
+      const onMove = (ev) => {
+        const p = clearChartToTimePrice(ev.clientX, ev.clientY);
+        if (p.time != null && p.price != null && pendingDraw) {
+          pendingDraw.t2 = p.time; pendingDraw.p2 = p.price;
+          drawCloud();
+        }
+      };
+      const onUp = () => {
+        layer.removeEventListener("pointermove", onMove);
+        layer.removeEventListener("pointerup", onUp);
+        if (pendingDraw && (pendingDraw.t1 !== pendingDraw.t2 || pendingDraw.p1 !== pendingDraw.p2)) {
+          if (!drawings[currentChartSym]) drawings[currentChartSym] = [];
+          drawings[currentChartSym].push(pendingDraw);
+          saveDrawings();
+        }
+        pendingDraw = null;
+        drawCloud();
+      };
+      layer.addEventListener("pointermove", onMove);
+      layer.addEventListener("pointerup", onUp);
+    });
+  })();
+
+  // ---------- export chart image ----------
+  async function exportChartImage() {
+    if (!chartInst || !currentChartSym) return;
+    const btn = document.getElementById("exportImgBtn");
+    const prevLabel = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "Exporting…";
+    try {
+      const base = chartInst.takeScreenshot();
+      const overlay = document.getElementById("cloudCanvas");
+      const out = document.createElement("canvas");
+      out.width = base.width;
+      out.height = base.height;
+      const octx = out.getContext("2d");
+      octx.fillStyle = "#0E1116";
+      octx.fillRect(0, 0, out.width, out.height);
+      octx.drawImage(base, 0, 0);
+      octx.drawImage(overlay, 0, 0, out.width, out.height);
+      octx.fillStyle = "#E7EAF2";
+      octx.font = Math.round(out.height * 0.032) + "px -apple-system, sans-serif";
+      octx.fillText(currentChartSym + " · Trend Watch", out.width * 0.02, out.height * 0.055);
+
+      const blob = await new Promise((resolve) => out.toBlob(resolve, "image/png"));
+      if (!blob) throw new Error("Couldn't render image");
+      const filename = currentChartSym + "-" + new Date().toISOString().slice(0, 10) + ".png";
+
+      let shared = false;
+      if (navigator.canShare && navigator.share) {
+        try {
+          const file = new File([blob], filename, { type: "image/png" });
+          if (navigator.canShare({ files: [file] })) {
+            await navigator.share({ files: [file], title: filename });
+            shared = true;
+          }
+        } catch (e) {
+          // user cancelled the share sheet, or share failed — fall back to a direct download
+          if (e && e.name === "AbortError") shared = true; // cancelled on purpose, don't also download
+        }
+      }
+      if (!shared) {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url; a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 2000);
+      }
+    } catch (e) {
+      showBanner("Couldn't export the chart image: " + e.message, "warn");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = prevLabel;
+    }
   }
 
   function togglePlay() {
@@ -1099,6 +1309,18 @@
   document.getElementById("chartPrevBtn").addEventListener("click", () => { stopPlay(); stepChart(-1); });
   document.getElementById("chartNextBtn").addEventListener("click", () => { stopPlay(); stepChart(1); });
   document.getElementById("chartPlayBtn").addEventListener("click", togglePlay);
+
+  document.getElementById("drawTrendBtn").addEventListener("click", () => setDrawMode("trend"));
+  document.getElementById("drawHlineBtn").addEventListener("click", () => setDrawMode("hline"));
+  document.getElementById("drawClearBtn").addEventListener("click", () => {
+    if (!currentChartSym || !drawings[currentChartSym] || !drawings[currentChartSym].length) return;
+    if (confirm("Clear all drawings on " + currentChartSym + "?")) {
+      drawings[currentChartSym] = [];
+      saveDrawings();
+      drawCloud();
+    }
+  });
+  document.getElementById("exportImgBtn").addEventListener("click", exportChartImage);
 
   // ---------- boot ----------
   (async function init() {
