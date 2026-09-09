@@ -1,0 +1,1126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Trend Watch — Alpaca Watchlist</title>
+
+<!-- PWA -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0E1116">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Trend Watch">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<style>
+  :root {
+    --bg: #0E1116;
+    --surface: #171B23;
+    --surface-2: #1F2430;
+    --border: #2A3040;
+    --text: #E7EAF2;
+    --text-dim: #8B92A5;
+    --text-faint: #565D70;
+    --bull: #34D399;
+    --bull-dim: #1B4A3C;
+    --bear: #F4685C;
+    --bear-dim: #4A2320;
+    --neutral: #C9A24B;
+    --accent: #5B8CFF;
+    --radius: 14px;
+    --mono: 'SF Mono', 'Menlo', 'Consolas', monospace;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100%;
+  }
+  body { padding-bottom: 48px; }
+  .wrap { max-width: 560px; margin: 0 auto; padding: 0 14px; }
+
+  header {
+    padding: 22px 14px 14px;
+    display: flex; align-items: baseline; justify-content: space-between;
+  }
+  header .title { display: flex; flex-direction: column; gap: 2px; }
+  header h1 {
+    font-size: 21px; font-weight: 650; letter-spacing: -0.01em; margin: 0;
+  }
+  header .sub { font-size: 12.5px; color: var(--text-dim); }
+  .icon-btn {
+    background: var(--surface); border: 1px solid var(--border);
+    color: var(--text-dim); border-radius: 10px;
+    width: 38px; height: 38px; display: flex; align-items: center; justify-content: center;
+    font-size: 16px; cursor: pointer; flex-shrink: 0;
+  }
+  .icon-btn:active { background: var(--surface-2); }
+
+  .bar {
+    display: flex; gap: 8px; padding: 0 14px 14px;
+  }
+  .add-input {
+    flex: 1; background: var(--surface); border: 1px solid var(--border);
+    color: var(--text); border-radius: 10px; padding: 11px 13px;
+    font-size: 15px; font-family: var(--mono); text-transform: uppercase;
+    min-width: 0;
+  }
+  .add-input:focus { outline: none; border-color: var(--accent); }
+  .btn {
+    background: var(--surface-2); border: 1px solid var(--border);
+    color: var(--text); border-radius: 10px; padding: 11px 16px;
+    font-size: 14.5px; font-weight: 550; cursor: pointer; white-space: nowrap;
+  }
+  .btn:active { opacity: 0.7; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #0A0F1C; }
+  .btn.ghost { background: transparent; }
+  .btn.small { padding: 7px 12px; font-size: 13px; border-radius: 8px; }
+  .btn:disabled { opacity: 0.4; }
+
+  .toolrow {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 14px 10px; gap: 10px; flex-wrap: wrap;
+  }
+  .toolrow .meta { font-size: 12px; color: var(--text-faint); }
+  .toolrow .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  .banner {
+    margin: 0 14px 14px; padding: 12px 14px; border-radius: 10px;
+    background: var(--bear-dim); border: 1px solid #6B2E29;
+    color: #FFC9C3; font-size: 13px; line-height: 1.45;
+  }
+  .banner a { color: #FFDDD8; }
+  .banner.info { background: #1B2A4A; border-color: #2E4A7A; color: #C7D6FF; }
+  .banner .close { float: right; cursor: pointer; opacity: 0.7; margin-left: 10px; }
+
+  .panel {
+    margin: 0 14px 16px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 16px; display: none;
+  }
+  .panel.open { display: block; }
+  .panel h3 { margin: 0 0 12px; font-size: 14px; font-weight: 600; color: var(--text-dim); text-transform: none; }
+  .field { margin-bottom: 12px; }
+  .field label { display: block; font-size: 12.5px; color: var(--text-dim); margin-bottom: 5px; }
+  .field input, .field select {
+    width: 100%; background: var(--surface-2); border: 1px solid var(--border);
+    color: var(--text); border-radius: 9px; padding: 10px 12px; font-size: 14.5px;
+    font-family: var(--mono);
+  }
+  .field select { font-family: var(--sans); }
+  .field input:focus, .field select:focus { outline: none; border-color: var(--accent); }
+  .toggle-row { display: flex; gap: 8px; }
+  .toggle-row button {
+    flex: 1; padding: 9px; border-radius: 9px; border: 1px solid var(--border);
+    background: var(--surface-2); color: var(--text-dim); font-size: 13.5px; cursor: pointer;
+  }
+  .toggle-row button.active { background: var(--accent); color: #0A0F1C; border-color: var(--accent); font-weight: 600; }
+  .panel-footer { display: flex; gap: 8px; margin-top: 4px; }
+  .hint { font-size: 12px; color: var(--text-faint); margin-top: 10px; line-height: 1.5; }
+
+  .list { padding: 0 14px; display: flex; flex-direction: column; gap: 8px; }
+  .empty {
+    text-align: center; padding: 60px 20px; color: var(--text-faint); font-size: 14px; line-height: 1.6;
+  }
+
+  .row {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 13px 14px; display: flex; align-items: center; gap: 12px; cursor: pointer;
+  }
+  .row .sym-col { flex: 1; min-width: 0; }
+  .row .sym { font-family: var(--mono); font-size: 16px; font-weight: 650; letter-spacing: 0.01em; }
+  .row .desc { font-size: 12px; color: var(--text-faint); margin-top: 2px; }
+  .row .price-col { text-align: right; }
+  .row .price { font-family: var(--mono); font-size: 15px; font-variant-numeric: tabular-nums; }
+  .row .chg { font-family: var(--mono); font-size: 12.5px; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .chg.up { color: var(--bull); }
+  .chg.down { color: var(--bear); }
+  .chg.flat { color: var(--text-faint); }
+
+  .badge {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.03em;
+    padding: 5px 9px; border-radius: 7px; flex-shrink: 0; width: 64px; text-align: center;
+  }
+  .badge.long { background: var(--bull-dim); color: var(--bull); }
+  .badge.short { background: var(--bear-dim); color: var(--bear); }
+  .badge.neutral { background: #2A2E38; color: var(--text-dim); }
+  .badge.loading { background: #2A2E38; color: var(--text-faint); }
+  .badge.err { background: var(--bear-dim); color: var(--bear); }
+
+  .row .remove {
+    background: none; border: none; color: var(--text-faint); font-size: 18px;
+    padding: 4px 2px; cursor: pointer; line-height: 1;
+  }
+
+  .sync-list { display: flex; flex-direction: column; gap: 6px; max-height: 220px; overflow-y: auto; margin-bottom: 12px; }
+  .sync-item {
+    display: flex; align-items: center; gap: 10px; padding: 9px 10px;
+    background: var(--surface-2); border-radius: 9px; font-size: 14px; cursor: pointer;
+  }
+  .sync-item input { width: 16px; height: 16px; }
+
+  footer { text-align: center; padding: 24px 14px 10px; font-size: 11.5px; color: var(--text-faint); line-height: 1.6; }
+
+  /* ---- chart modal ---- */
+  .chart-modal {
+    position: fixed; inset: 0; background: var(--bg); z-index: 50;
+    display: none; flex-direction: column;
+  }
+  .chart-modal.open { display: flex; }
+  .chart-head {
+    display: flex; align-items: center; gap: 12px; padding: 14px 14px 10px;
+    border-bottom: 1px solid var(--border); flex-shrink: 0;
+  }
+  .chart-head .cx-btn {
+    background: var(--surface); border: 1px solid var(--border); color: var(--text-dim);
+    width: 34px; height: 34px; border-radius: 9px; font-size: 16px; flex-shrink: 0; cursor: pointer;
+  }
+  .chart-head .cx-info { flex: 1; min-width: 0; }
+  .chart-head .cx-sym { font-family: var(--mono); font-size: 17px; font-weight: 700; }
+  .chart-head .cx-meta { font-size: 12px; color: var(--text-dim); margin-top: 1px; }
+  .chart-head .cx-price { text-align: right; font-family: var(--mono); font-size: 16px; font-variant-numeric: tabular-nums; }
+  .chart-head .cx-chg { text-align: right; font-family: var(--mono); font-size: 12px; margin-top: 1px; }
+
+  .chart-area { flex: 1; position: relative; min-height: 0; }
+  #chartContainer { position: absolute; inset: 0; }
+  #cloudCanvas { position: absolute; inset: 0; pointer-events: none; }
+  .chart-loading {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    color: var(--text-faint); font-size: 13px;
+  }
+
+  .chart-legend {
+    display: flex; flex-wrap: wrap; row-gap: 6px; gap: 14px; padding: 8px 16px 0; font-size: 11px; color: var(--text-dim); flex-shrink: 0;
+  }
+  .chart-legend span { display: flex; align-items: center; gap: 5px; }
+  .chart-legend i { width: 10px; height: 2px; display: inline-block; border-radius: 2px; }
+  .chart-legend i.hollow-swatch { width: 10px; height: 10px; background: transparent; border: 1.5px solid var(--text-dim); border-radius: 2px; }
+
+  .chart-controls {
+    display: flex; align-items: center; justify-content: center; gap: 18px;
+    padding: 14px 14px 20px; flex-shrink: 0;
+  }
+  .cc-btn {
+    background: var(--surface); border: 1px solid var(--border); color: var(--text);
+    width: 44px; height: 44px; border-radius: 50%; font-size: 16px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .cc-btn.play { width: 56px; height: 56px; background: var(--accent); border-color: var(--accent); color: #0A0F1C; font-size: 19px; }
+  .cc-index { min-width: 46px; text-align: center; font-size: 12px; color: var(--text-faint); font-family: var(--mono); }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+  <header>
+    <div class="title">
+      <h1>Trend Watch</h1>
+      <div class="sub" id="subLine">Daily LinReg / EMA cloud scan</div>
+    </div>
+    <button class="icon-btn" id="settingsBtn" title="Settings">⚙</button>
+  </header>
+
+  <div id="bannerHost"></div>
+
+  <div class="panel" id="settingsPanel">
+    <h3>Alpaca connection</h3>
+    <div class="field">
+      <label>API Key ID</label>
+      <input type="text" id="apiKeyId" autocomplete="off" spellcheck="false" placeholder="PK...">
+    </div>
+    <div class="field">
+      <label>Secret Key</label>
+      <input type="password" id="apiSecret" autocomplete="off" spellcheck="false" placeholder="••••••••••">
+    </div>
+    <div class="field">
+      <label>Account</label>
+      <div class="toggle-row">
+        <button id="acctPaper" class="active">Paper trading</button>
+        <button id="acctLive">Live trading</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>CORS proxy prefix (optional)</label>
+      <input type="text" id="corsProxy" autocomplete="off" spellcheck="false" placeholder="e.g. https://your-proxy/">
+    </div>
+    <div class="panel-footer">
+      <button class="btn primary" id="saveSettingsBtn" style="flex:1">Save</button>
+      <button class="btn ghost" id="closeSettingsBtn">Close</button>
+    </div>
+    <div class="hint">
+      Keys are stored only in your own private app storage on this account — never shared. Alpaca's API doesn't send CORS headers, so a direct browser request will usually be blocked. If refreshing fails with a network error, set a CORS proxy prefix above (a URL that will be prepended to each Alpaca request) or run a small proxy of your own in front of Alpaca.
+    </div>
+  </div>
+
+  <div class="panel" id="syncPanel">
+    <h3>Import from an Alpaca watchlist</h3>
+    <div id="syncListHost" class="sync-list"></div>
+    <div class="panel-footer">
+      <button class="btn primary" id="importSelectedBtn" style="flex:1">Add selected</button>
+      <button class="btn ghost" id="closeSyncBtn">Close</button>
+    </div>
+  </div>
+
+  <div class="bar">
+    <input type="text" class="add-input" id="addSymbolInput" placeholder="Add symbol, e.g. NVDA" maxlength="8">
+    <button class="btn primary" id="addSymbolBtn">Add</button>
+  </div>
+
+  <div class="toolrow">
+    <div class="meta" id="lastUpdated">Not refreshed yet</div>
+    <div class="actions">
+      <button class="btn small" id="filterLongBtn">Longs only</button>
+      <button class="btn small" id="chartOpenBtn">Chart</button>
+      <button class="btn small" id="syncBtn">Sync</button>
+      <button class="btn small primary" id="refreshBtn">Refresh all</button>
+    </div>
+  </div>
+
+  <div class="list" id="listHost"></div>
+
+  <footer>
+    Long/short state comes from the 20/13 and 80/20 LinReg–EMA cloud on daily closes, filtered by the 34 and 65 EMAs — the same logic as the pasted script. Not investment advice.
+  </footer>
+
+</div>
+
+<div class="chart-modal" id="chartModal">
+  <div class="chart-head">
+    <button class="cx-btn" id="chartCloseBtn">✕</button>
+    <div class="cx-info">
+      <div class="cx-sym" id="cxSym">—</div>
+      <div class="cx-meta" id="cxMeta">—</div>
+    </div>
+    <div>
+      <div class="cx-price" id="cxPrice">—</div>
+      <div class="cx-chg" id="cxChg">—</div>
+    </div>
+  </div>
+  <div class="chart-legend">
+    <span><i style="background:#22D3EE"></i>EMA 34</span>
+    <span><i style="background:#FF7BC8"></i>EMA 65</span>
+    <span><i style="background:#22D3EE"></i>Buy</span>
+    <span><i style="background:#F4685C"></i>Sell</span>
+  </div>
+  <div class="chart-legend" style="padding-top:4px;">
+    <span><i style="background:#34D399"></i>Long bars</span>
+    <span><i style="background:#F4685C"></i>Short bars</span>
+    <span><i style="background:#6B7280"></i>Neutral bars</span>
+    <span><i style="background:linear-gradient(90deg,#34D39955,#F4685C55)"></i>80/20 cloud</span>
+    <span><i class="hollow-swatch"></i>Hollow = close &gt; open</span>
+  </div>
+  <div class="chart-area">
+    <div id="chartContainer"></div>
+    <canvas id="cloudCanvas"></canvas>
+    <div class="chart-loading" id="chartLoading">Loading chart…</div>
+  </div>
+  <div class="chart-controls">
+    <button class="cc-btn" id="chartPrevBtn">‹</button>
+    <button class="cc-btn play" id="chartPlayBtn">▶</button>
+    <button class="cc-btn" id="chartNextBtn">›</button>
+  </div>
+  <div style="text-align:center; padding-bottom:14px;">
+    <span class="cc-index" id="chartIndex">— / —</span>
+  </div>
+</div>
+
+<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  // ---------- state ----------
+  let settings = { keyId: "", secret: "", account: "paper", proxy: "" };
+  let symbols = [];               // ["AAPL", "NVDA", ...]
+  let signals = {};               // symbol -> { state, sinceDays, price, changePct, status }
+  let barsCache = {};              // symbol -> raw bars array (for charting)
+  let alpacaWatchlists = null;    // cached list of {id,name}
+  let syncSelection = new Set();
+  let longsOnly = false;          // filter state for displaying long setups only
+
+  // chart modal state
+  let chartInst = null, candleSeries = null, ema34Series = null, ema65Series = null;
+  let chartIndex = 0, playTimer = null;
+  let cloudData = null; // { points: [{time, upper, lower}], canvas }
+
+  const DEFAULT_SYMBOLS = ["AAPL","AA", "AAL", "ABBV", "ABT", "ACB", "ACN", "ADBE", "ADSK", "AFRM", "AGNC",
+      "ALHC", "AMD", "AMZN", "APP", "ARM", "ASPI", "ASTS", "AVDL", "AXON", "B",
+      "BA", "BABA", "BAC", "BAM", "BE", "BMY", "BULL", "C", "CARR", "CAVA",
+      "CC", "CCJ", "CCL", "CELH", "CHWY", "CLMT", "CLOV", "CLSK", "CMG", "CNQ",
+      "CORZ", "COST", "COTY", "CPNG", "CRM", "CRML", "CRWD", "CRWV", "CVNA", "CVS",
+      "DAR", "DBX", "DELL", "DJT", "DKNG", "DOW", "EBAY", "ENPH", "ENR", "EQX",
+      "EXE", "F", "FCX", "FDX", "FSLR", "GILD", "GILT", "GM", "GME", "GOOG",
+      "GOOGL", "HIMS", "HOOD", "HPE", "HPQ", "HUT", "INTC", "IQ", "IREN", "IWM",
+      "JBLU", "JD", "JMIA", "JNJ", "JPM", "KHC", "KMI", "KO", "KSS", "LLY",
+      "LOW", "LULU", "LUV", "LVS", "LYFT", "MARA", "MBLY", "MBOT", "META", "MNDY",
+      "MO", "MRK", "MRVL", "MSFT", "MU", "NEE", "NEXT", "NFLX", "NIO", "NKE",
+      "NU", "NVDA", "ONDS", "OPEN", "OWL", "OXY", "PBR", "PCG", "PDD", "PEP",
+      "PFE", "PG", "PGEN", "PINS", "PLTR", "PSKY", "QBTS", "QCOM", "QD", "QQQ",
+      "QS", "RELY", "RGTI", "RIOT", "RIVN", "RKT", "ROKU", "RTX", "SATS", "SBUX",
+      "SERV", "SLV", "SMCI", "SNAP", "SOFI", "SOUN", "SPY", "T", "TCOM", "TDOC",
+      "TEVA", "TGT", "TIGR", "TMUS", "TNA", "TRMD", "TSLA", "TTD", "U", "UAL",
+      "UBER", "UPS", "UPST", "VALE", "VZ", "WDC", "WMT", "WULF", "XLE", "XLF",
+      "XOM", "XPEV", "Z"];
+
+  // ---------- storage ----------
+  const LS_PREFIX = "trendwatch:";
+  function hasCloudStorage() {
+    return typeof window.storage !== "undefined" && window.storage && typeof window.storage.set === "function";
+  }
+  async function storageGet(key) {
+    if (hasCloudStorage()) {
+      try {
+        const r = await window.storage.get(key, false);
+        return r ? r.value : null;
+      } catch (e) { return null; }
+    }
+    try { return localStorage.getItem(LS_PREFIX + key); }
+    catch (e) { return null; }
+  }
+  async function storageSet(key, value) {
+    if (hasCloudStorage()) {
+      try { await window.storage.set(key, value, false); return true; }
+      catch (e) { console.error("cloud storage save failed", e); return false; }
+    }
+    try { localStorage.setItem(LS_PREFIX + key, value); return true; }
+    catch (e) { console.error("local storage save failed", e); return false; }
+  }
+
+  async function loadState() {
+    const s = await storageGet("settings");
+    if (s) { try { settings = Object.assign(settings, JSON.parse(s)); } catch (e) {} }
+    const w = await storageGet("watchlist");
+    if (w) { try { symbols = JSON.parse(w); } catch (e) { symbols = DEFAULT_SYMBOLS.slice(); } }
+    else { symbols = DEFAULT_SYMBOLS.slice(); }
+  }
+
+  async function saveSettings() {
+    const ok = await storageSet("settings", JSON.stringify(settings));
+    if (!ok) showBanner("Couldn't save settings — your browser may be blocking local storage (e.g. private browsing).", "warn");
+    return ok;
+  }
+
+  async function saveWatchlist() {
+    await storageSet("watchlist", JSON.stringify(symbols));
+  }
+
+  // ---------- banners ----------
+  function showBanner(html, type, id) {
+    const host = document.getElementById("bannerHost");
+    const div = document.createElement("div");
+    div.className = "banner" + (type === "info" ? " info" : "");
+    div.id = id || "";
+    div.innerHTML = html + '<span class="close" onclick="this.parentElement.remove()">✕</span>';
+    host.appendChild(div);
+  }
+  function clearBanners() { document.getElementById("bannerHost").innerHTML = ""; }
+
+  // ---------- Alpaca requests ----------
+  function tradingBase() {
+    return settings.account === "live" ? "https://api.alpaca.markets" : "https://paper-api.alpaca.markets";
+  }
+  const DATA_BASE = "https://data.alpaca.markets";
+
+  function withProxy(url) {
+    if (!settings.proxy) return url;
+    return settings.proxy.replace(/\/+$/, "/") === settings.proxy && settings.proxy.endsWith("/")
+      ? settings.proxy + url
+      : settings.proxy + url;
+  }
+
+  async function alpacaFetch(url) {
+    const res = await fetch(withProxy(url), {
+      cache: "no-store",
+      headers: {
+        "APCA-API-KEY-ID": settings.keyId,
+        "APCA-API-SECRET-KEY": settings.secret
+      }
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      const err = new Error("HTTP " + res.status + " " + text.slice(0, 200));
+      err.status = res.status;
+      throw err;
+    }
+    return res.json();
+  }
+
+  async function fetchDailyBars(symbol) {
+    const start = new Date();
+    start.setDate(start.getDate() - 500);
+    const startStr = start.toISOString().slice(0, 10);
+    const endStr = new Date().toISOString();
+    // URL without the illegal query parameter
+    const url = DATA_BASE + "/v2/stocks/" + encodeURIComponent(symbol) +
+      "/bars?timeframe=1Day&start=" + startStr + "&end=" + encodeURIComponent(endStr) +
+      "&limit=1000&adjustment=split&feed=iex";
+    const data = await alpacaFetch(url);
+    return (data && data.bars) ? data.bars : [];
+  }
+
+  // Fetches daily bars for many symbols in as few requests as possible using
+  // Alpaca's multi-symbol bars endpoint, following next_page_token until exhausted.
+  async function fetchDailyBarsBatch(symbolsArr, startStr, endStr) {
+    const result = {};
+    symbolsArr.forEach(s => { result[s] = []; });
+    let pageToken = null;
+    do {
+      let url = DATA_BASE + "/v2/stocks/bars?symbols=" + encodeURIComponent(symbolsArr.join(",")) +
+        "&timeframe=1Day&start=" + startStr + "&end=" + encodeURIComponent(endStr) +
+        "&limit=10000&adjustment=split&feed=iex";
+      if (pageToken) url += "&page_token=" + encodeURIComponent(pageToken);
+      const data = await alpacaFetch(url);
+      const bars = (data && data.bars) ? data.bars : {};
+      for (const sym of symbolsArr) {
+        if (bars[sym] && bars[sym].length) result[sym] = result[sym].concat(bars[sym]);
+      }
+      pageToken = (data && data.next_page_token) ? data.next_page_token : null;
+    } while (pageToken);
+    return result;
+  }
+
+  async function fetchAlpacaWatchlists() {
+    const data = await alpacaFetch(tradingBase() + "/v2/watchlists");
+    return data || [];
+  }
+
+  async function fetchAlpacaWatchlistDetail(id) {
+    const data = await alpacaFetch(tradingBase() + "/v2/watchlists/" + id);
+    return (data && data.assets) ? data.assets.map(a => a.symbol) : [];
+  }
+
+  // ---------- indicator math ----------
+  function linRegSeries(values, length) {
+    const out = new Array(values.length).fill(null);
+    for (let i = length - 1; i < values.length; i++) {
+      let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+      for (let j = 0; j < length; j++) {
+        const x = j;
+        const y = values[i - length + 1 + j];
+        sumX += x; sumY += y; sumXY += x * y; sumX2 += x * x;
+      }
+      const denom = (length * sumX2 - sumX * sumX);
+      const slope = denom === 0 ? 0 : (length * sumXY - sumX * sumY) / denom;
+      const intercept = (sumY - slope * sumX) / length;
+      out[i] = intercept + slope * (length - 1);
+    }
+    return out;
+  }
+
+  function emaSeries(values, length) {
+    const out = new Array(values.length).fill(null);
+    const k = 2 / (length + 1);
+    let prev = null;
+    for (let i = 0; i < values.length; i++) {
+      const v = values[i];
+      if (v === null || v === undefined) { continue; }
+      if (prev === null) { prev = v; }
+      else { prev = v * k + prev * (1 - k); }
+      out[i] = prev;
+    }
+    return out;
+  }
+
+  function computeSignal(bars) {
+    if (!bars || bars.length < 90) return { status: "insufficient" };
+    const closes = bars.map(b => b.c);
+
+    const LR20 = linRegSeries(closes, 20);
+    const EMA_LR20 = emaSeries(LR20, 13);
+    const LR80 = linRegSeries(closes, 80);
+    const EMA_LR80 = emaSeries(LR80, 20);
+    const EMA65 = emaSeries(closes, 65);
+    const EMA34 = emaSeries(closes, 34);
+
+    const n = closes.length;
+    const longArr = new Array(n).fill(false);
+    const shortArr = new Array(n).fill(false);
+
+    for (let i = 0; i < n; i++) {
+      if (LR20[i] == null || EMA_LR20[i] == null || LR80[i] == null || EMA_LR80[i] == null ||
+          EMA65[i] == null || EMA34[i] == null) continue;
+      const higher = EMA_LR20[i] < LR20[i];
+      const lower = EMA_LR20[i] > LR20[i];
+      const test = (LR20[i] + EMA_LR20[i]) / 2;
+      const close = closes[i];
+
+      longArr[i] = higher && test > EMA34[i] && close > EMA65[i] && EMA_LR80[i] < LR80[i] && close > EMA_LR80[i];
+      shortArr[i] = lower && test < EMA34[i] && close < EMA65[i] && EMA_LR80[i] > LR80[i];
+    }
+
+    let state = "neutral";
+    if (longArr[n - 1]) state = "long";
+    else if (shortArr[n - 1]) state = "short";
+
+    let sinceDays = 0;
+    if (state !== "neutral") {
+      const arr = state === "long" ? longArr : shortArr;
+      for (let i = n - 1; i >= 0 && arr[i]; i--) sinceDays++;
+    }
+
+    let lastFlip = null;
+    for (let i = n - 1; i > 0; i--) {
+      if (longArr[i] && !longArr[i - 1]) { lastFlip = { type: "buy", index: i }; break; }
+      if (shortArr[i] && !shortArr[i - 1]) { lastFlip = { type: "sell", index: i }; break; }
+    }
+
+    const last = bars[n - 1];
+    const prev = bars[n - 2];
+    const changePct = prev ? ((last.c - prev.c) / prev.c) * 100 : 0;
+
+    return {
+      status: "ok",
+      state,
+      sinceDays,
+      price: last.c,
+      changePct,
+      lastFlip: lastFlip ? { type: lastFlip.type, daysAgo: n - 1 - lastFlip.index } : null
+    };
+  }
+
+  // ---------- rendering ----------
+  function fmtPrice(p) {
+    if (p == null) return "—";
+    return p >= 1000 ? p.toFixed(0) : p.toFixed(2);
+  }
+
+  function badgeHtml(sig) {
+    if (!sig || sig.status === "loading") return '<div class="badge loading">···</div>';
+    if (sig.status === "error") return '<div class="badge err">ERR</div>';
+    if (sig.status === "insufficient") return '<div class="badge neutral">N/A</div>';
+    if (sig.state === "long") return '<div class="badge long">LONG</div>';
+    if (sig.state === "short") return '<div class="badge short">SHORT</div>';
+    return '<div class="badge neutral">FLAT</div>';
+  }
+
+  function rowNote(sig) {
+    if (!sig || sig.status !== "ok") return "";
+    if (sig.state === "neutral") {
+      if (sig.lastFlip) return "last " + sig.lastFlip.type + " " + sig.lastFlip.daysAgo + "d ago";
+      return "no recent cross";
+    }
+    return sig.sinceDays + (sig.sinceDays === 1 ? " day" : " days") + " in " + sig.state;
+  }
+
+  function render() {
+    const host = document.getElementById("listHost");
+    const displaySymbols = longsOnly
+      ? symbols.filter(sym => signals[sym] && signals[sym].state === "long")
+      : symbols;
+
+    if (displaySymbols.length === 0) {
+      host.innerHTML = '<div class="empty">' +
+        (longsOnly ? 'No stocks currently in LONG state.' : 'No symbols yet.<br>Add one above, or sync your Alpaca watchlist.') +
+        '</div>';
+      return;
+    }
+
+    host.innerHTML = displaySymbols.map(sym => {
+      const sig = signals[sym];
+      const chg = sig && sig.status === "ok" ? sig.changePct : null;
+      const chgClass = chg == null ? "flat" : (chg > 0.001 ? "up" : chg < -0.001 ? "down" : "flat");
+      const chgText = chg == null ? "" : (chg >= 0 ? "+" : "") + chg.toFixed(2) + "%";
+      return (
+        '<div class="row" data-sym="' + sym + '">' +
+          '<div class="sym-col">' +
+            '<div class="sym">' + sym + '</div>' +
+            '<div class="desc">' + rowNote(sig) + '</div>' +
+          '</div>' +
+          '<div class="price-col">' +
+            '<div class="price">' + (sig && sig.status === "ok" ? fmtPrice(sig.price) : "—") + '</div>' +
+            '<div class="chg ' + chgClass + '">' + chgText + '</div>' +
+          '</div>' +
+          badgeHtml(sig) +
+          '<button class="remove" data-remove="' + sym + '">✕</button>' +
+        '</div>'
+      );
+    }).join("");
+
+    host.querySelectorAll("[data-remove]").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const s = btn.getAttribute("data-remove");
+        symbols = symbols.filter(x => x !== s);
+        delete signals[s];
+        saveWatchlist();
+        render();
+      });
+    });
+
+    host.querySelectorAll(".row").forEach(row => {
+      row.addEventListener("click", () => openChart(row.getAttribute("data-sym")));
+    });
+  }
+
+  function updateSubline() {
+    const sub = document.getElementById("subLine");
+    sub.textContent = settings.account === "live" ? "Daily scan · live account" : "Daily scan · paper account";
+  }
+
+  // ---------- refresh ----------
+  // Batches symbols into groups and fetches each group's bars in a single
+  // Alpaca request (instead of one request per symbol), so a ~180-symbol
+  // watchlist takes a handful of round-trips instead of ~180.
+  const REFRESH_BATCH_SIZE = 60;
+
+  async function refreshAll() {
+    if (!settings.keyId || !settings.secret) {
+      showBanner("Add your Alpaca API key and secret in Settings before refreshing.", "info");
+      openSettings();
+      return;
+    }
+    clearBanners();
+    const btn = document.getElementById("refreshBtn");
+    btn.disabled = true;
+
+    symbols.forEach(sym => { signals[sym] = { status: "loading" }; });
+    render();
+
+    const start = new Date();
+    start.setDate(start.getDate() - 500);
+    const startStr = start.toISOString().slice(0, 10);
+    const endStr = new Date().toISOString();
+
+    const batches = [];
+    for (let i = 0; i < symbols.length; i += REFRESH_BATCH_SIZE) {
+      batches.push(symbols.slice(i, i + REFRESH_BATCH_SIZE));
+    }
+
+    let corsFailure = false;
+    let authFailure = false;
+
+    for (let b = 0; b < batches.length; b++) {
+      const batch = batches[b];
+      btn.textContent = "Refreshing… (" + (b + 1) + "/" + batches.length + ")";
+      try {
+        const barsMap = await fetchDailyBarsBatch(batch, startStr, endStr);
+        for (const sym of batch) {
+          const bars = barsMap[sym] || [];
+          barsCache[sym] = bars;
+          signals[sym] = bars.length ? computeSignal(bars) : { status: "insufficient" };
+        }
+      } catch (e) {
+        if (e.status === 401 || e.status === 403) {
+          authFailure = true;
+        } else if (e.message && (e.message.indexOf("Failed to fetch") !== -1 || e.message.indexOf("NetworkError") !== -1)) {
+          corsFailure = true;
+        }
+        batch.forEach(sym => { signals[sym] = { status: "error", message: e.message }; });
+      }
+      render();
+    }
+
+    btn.disabled = false;
+    btn.textContent = "Refresh all";
+    document.getElementById("lastUpdated").textContent = "Updated " + new Date().toLocaleTimeString();
+    if (authFailure) {
+      showBanner(
+        "Alpaca rejected the request (401/403 Unauthorized). Double-check the Key ID and Secret in Settings — paste them fresh with no extra spaces — and that the Paper/Live toggle matches the keys you generated.",
+        "warn"
+      );
+    } else if (corsFailure) {
+      showBanner(
+        "Requests to Alpaca were blocked by the browser (Alpaca's API doesn't return CORS headers for direct browser calls). Set a CORS proxy prefix in Settings, or run a small proxy in front of Alpaca and point this app at it.",
+        "warn"
+      );
+    }
+  }
+
+  // ---------- settings panel ----------
+  function openSettings() {
+    document.getElementById("apiKeyId").value = settings.keyId;
+    document.getElementById("apiSecret").value = settings.secret;
+    document.getElementById("corsProxy").value = settings.proxy;
+    setAccountToggle(settings.account);
+    document.getElementById("settingsPanel").classList.add("open");
+    document.getElementById("syncPanel").classList.remove("open");
+  }
+  function closeSettings() { document.getElementById("settingsPanel").classList.remove("open"); }
+  function setAccountToggle(which) {
+    document.getElementById("acctPaper").classList.toggle("active", which === "paper");
+    document.getElementById("acctLive").classList.toggle("active", which === "live");
+  }
+
+  // ---------- sync panel ----------
+  async function openSync() {
+    if (!settings.keyId || !settings.secret) {
+      showBanner("Add your Alpaca API key and secret in Settings first.", "info");
+      openSettings();
+      return;
+    }
+    document.getElementById("syncPanel").classList.add("open");
+    document.getElementById("settingsPanel").classList.remove("open");
+    const host = document.getElementById("syncListHost");
+    host.innerHTML = '<div class="hint">Loading your Alpaca watchlists…</div>';
+    try {
+      const lists = await fetchAlpacaWatchlists();
+      alpacaWatchlists = lists;
+      if (!lists.length) {
+        host.innerHTML = '<div class="hint">No watchlists found on this Alpaca account.</div>';
+        return;
+      }
+      const details = await Promise.all(lists.map(l => fetchAlpacaWatchlistDetail(l.id)));
+      syncSelection = new Set();
+      host.innerHTML = lists.map((l, idx) => {
+        const syms = details[idx];
+        return '<label class="sync-item"><input type="checkbox" data-list="' + idx + '"> ' +
+          '<span>' + l.name + ' <span style="color:var(--text-faint)">(' + syms.length + ')</span></span></label>';
+      }).join("");
+      host.dataset.details = JSON.stringify(details);
+    } catch (e) {
+      host.innerHTML = '<div class="hint">Couldn\'t load watchlists: ' + e.message + '</div>';
+    }
+  }
+  function closeSync() { document.getElementById("syncPanel").classList.remove("open"); }
+
+  function importSelected() {
+    const host = document.getElementById("syncListHost");
+    const details = host.dataset.details ? JSON.parse(host.dataset.details) : [];
+    const boxes = host.querySelectorAll('input[type="checkbox"]:checked');
+    let added = 0;
+    boxes.forEach(box => {
+      const idx = parseInt(box.getAttribute("data-list"), 10);
+      (details[idx] || []).forEach(sym => {
+        if (!symbols.includes(sym)) { symbols.push(sym); added++; }
+      });
+    });
+    saveWatchlist();
+    render();
+    closeSync();
+    if (added > 0) showBanner("Added " + added + " symbol" + (added === 1 ? "" : "s") + " from Alpaca.", "info");
+  }
+
+  // ---------- add symbol ----------
+  function addSymbol() {
+    const input = document.getElementById("addSymbolInput");
+    const sym = input.value.trim().toUpperCase();
+    if (!sym) return;
+    if (!symbols.includes(sym)) {
+      symbols.push(sym);
+      saveWatchlist();
+      render();
+    }
+    input.value = "";
+  }
+
+  // ---------- chart modal ----------
+  function barTime(iso) {
+    return iso.slice(0, 10);
+  }
+
+  function ensureChart() {
+    if (chartInst) return;
+    const container = document.getElementById("chartContainer");
+    chartInst = LightweightCharts.createChart(container, {
+      layout: { background: { color: "transparent" }, textColor: "#8B92A5" },
+      grid: { vertLines: { color: "#1B2029" }, horzLines: { color: "#1B2029" } },
+      rightPriceScale: { borderColor: "#2A3040" },
+      timeScale: { borderColor: "#2A3040", timeVisible: false, rightOffset: 6 },
+      crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+      width: container.clientWidth,
+      height: container.clientHeight
+    });
+    candleSeries = chartInst.addCandlestickSeries({
+      upColor: "#34D399", downColor: "#F4685C", borderVisible: true,
+      borderUpColor: "#34D399", borderDownColor: "#F4685C",
+      wickUpColor: "#34D399", wickDownColor: "#F4685C"
+    });
+    ema34Series = chartInst.addLineSeries({ color: "#22D3EE", lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+    ema65Series = chartInst.addLineSeries({ color: "#FF7BC8", lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+
+    chartInst.timeScale().subscribeVisibleLogicalRangeChange(drawCloud);
+
+    window.addEventListener("resize", () => {
+      if (!chartInst) return;
+      chartInst.resize(container.clientWidth, container.clientHeight);
+      sizeCloudCanvas();
+      drawCloud();
+    });
+  }
+
+  function sizeCloudCanvas() {
+    const container = document.getElementById("chartContainer");
+    const canvas = document.getElementById("cloudCanvas");
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = container.clientWidth * dpr;
+    canvas.height = container.clientHeight * dpr;
+    canvas.style.width = container.clientWidth + "px";
+    canvas.style.height = container.clientHeight + "px";
+    const ctx = canvas.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function drawCloud() {
+    const canvas = document.getElementById("cloudCanvas");
+    const ctx = canvas.getContext("2d");
+    const dpr = window.devicePixelRatio || 1;
+    ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
+    if (!chartInst || !candleSeries || !cloudData || !cloudData.points.length) return;
+
+    const pts = cloudData.points
+      .map(p => ({
+        x: chartInst.timeScale().timeToCoordinate(p.time),
+        upper: candleSeries.priceToCoordinate(p.upper),
+        lower: candleSeries.priceToCoordinate(p.lower),
+        bullish: p.bullish
+      }))
+      .filter(p => p.x !== null && p.upper !== null && p.lower !== null);
+
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i], b = pts[i + 1];
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.upper);
+      ctx.lineTo(b.x, b.upper);
+      ctx.lineTo(b.x, b.lower);
+      ctx.lineTo(a.x, a.lower);
+      ctx.closePath();
+      ctx.fillStyle = a.bullish ? "rgba(52,211,153,0.16)" : "rgba(244,104,92,0.16)";
+      ctx.fill();
+    }
+  }
+
+  async function renderChartFor(sym) {
+    document.getElementById("cxSym").textContent = sym;
+    const currentList = longsOnly ? symbols.filter(s => signals[s] && signals[s].state === "long") : symbols;
+    const activeIdx = currentList.indexOf(sym);
+    document.getElementById("chartIndex").textContent = (activeIdx >= 0 ? activeIdx + 1 : 1) + " / " + currentList.length;
+    document.getElementById("chartLoading").style.display = "flex";
+    document.getElementById("chartLoading").textContent = "Loading chart…";
+
+    let bars = barsCache[sym];
+    if (!bars) {
+      try {
+        bars = await fetchDailyBars(sym);
+        barsCache[sym] = bars;
+        signals[sym] = computeSignal(bars);
+      } catch (e) {
+        cloudData = null; drawCloud();
+        document.getElementById("chartLoading").textContent = "Couldn't load " + sym + ": " + e.message;
+        return;
+      }
+    }
+    if (!bars || bars.length < 2) {
+      cloudData = null; drawCloud();
+      document.getElementById("chartLoading").textContent = "No data for " + sym;
+      return;
+    }
+
+    ensureChart();
+    document.getElementById("chartLoading").style.display = "none";
+
+    const closes = bars.map(b => b.c);
+    const ema34 = emaSeries(closes, 34);
+    const ema65 = emaSeries(closes, 65);
+    const LR20 = linRegSeries(closes, 20);
+    const EMA_LR20 = emaSeries(LR20, 13);
+    const LR80 = linRegSeries(closes, 80);
+    const EMA_LR80 = emaSeries(LR80, 20);
+    const n = closes.length;
+
+    const barState = new Array(n).fill("neutral");
+    for (let i = 0; i < n; i++) {
+      if (LR20[i] == null || EMA_LR20[i] == null || LR80[i] == null || EMA_LR80[i] == null ||
+          ema65[i] == null || ema34[i] == null) continue;
+      const higher = EMA_LR20[i] < LR20[i];
+      const lower = EMA_LR20[i] > LR20[i];
+      const test = (LR20[i] + EMA_LR20[i]) / 2;
+      const close = closes[i];
+      const isLong = higher && test > ema34[i] && close > ema65[i] && EMA_LR80[i] < LR80[i] && close > EMA_LR80[i];
+      const isShort = lower && test < ema34[i] && close < ema65[i] && EMA_LR80[i] > LR80[i];
+      barState[i] = isLong ? "long" : isShort ? "short" : "neutral";
+    }
+    const STATE_COLOR = { long: "#34D399", short: "#F4685C", neutral: "#6B7280" };
+
+    const WINDOW = 90;
+    const from = Math.max(0, n - WINDOW);
+    const dispBars = bars.slice(from);
+    const dispIdx = i => from + i;
+
+    candleSeries.setData(dispBars.map((b, i) => {
+      const col = STATE_COLOR[barState[dispIdx(i)]];
+      const bullish = b.c >= b.o; // green bar: closed above its own open
+      return {
+        time: barTime(b.t), open: b.o, high: b.h, low: b.l, close: b.c,
+        color: bullish ? "rgba(0,0,0,0)" : col,  // hollow body on green bars
+        borderColor: col,
+        wickColor: col
+      };
+    }));
+
+
+
+
+
+    ema34Series.setData(dispBars.map((b, i) => ema34[dispIdx(i)] == null ? null : { time: barTime(b.t), value: ema34[dispIdx(i)] }).filter(Boolean));
+    ema65Series.setData(dispBars.map((b, i) => ema65[dispIdx(i)] == null ? null : { time: barTime(b.t), value: ema65[dispIdx(i)] }).filter(Boolean));
+
+    const markers = [];
+    for (let i = Math.max(1, from); i < n; i++) {
+      if (barState[i] === "long" && barState[i - 1] !== "long") {
+        markers.push({ time: barTime(bars[i].t), position: "belowBar", color: "#22D3EE", shape: "arrowUp", text: "BUY" });
+      }
+      if (barState[i] === "short" && barState[i - 1] !== "short") {
+        markers.push({ time: barTime(bars[i].t), position: "aboveBar", color: "#F4685C", shape: "arrowDown", text: "SELL" });
+      }
+    }
+    candleSeries.setMarkers(markers);
+    chartInst.timeScale().fitContent();
+
+    cloudData = {
+      points: dispBars.map((b, i) => {
+        const idx = dispIdx(i);
+        if (LR80[idx] == null || EMA_LR80[idx] == null) return null;
+        return {
+          time: barTime(b.t),
+          upper: Math.max(LR80[idx], EMA_LR80[idx]),
+          lower: Math.min(LR80[idx], EMA_LR80[idx]),
+          bullish: LR80[idx] > EMA_LR80[idx]
+        };
+      }).filter(Boolean)
+    };
+    sizeCloudCanvas();
+    requestAnimationFrame(drawCloud);
+
+    const sig = signals[sym];
+    document.getElementById("cxPrice").textContent = sig && sig.status === "ok" ? fmtPrice(sig.price) : fmtPrice(bars[n - 1].c);
+    document.getElementById("cxMeta").textContent = sig && sig.status === "ok" ? rowNote(sig) : "";
+    const chgEl = document.getElementById("cxChg");
+    if (sig && sig.status === "ok") {
+      const chg = sig.changePct;
+      chgEl.textContent = (chg >= 0 ? "+" : "") + chg.toFixed(2) + "%";
+      chgEl.style.color = chg > 0.001 ? "var(--bull)" : chg < -0.001 ? "var(--bear)" : "var(--text-faint)";
+    } else {
+      chgEl.textContent = "";
+    }
+  }
+
+  function openChart(sym) {
+    const currentList = longsOnly ? symbols.filter(s => signals[s] && signals[s].state === "long") : symbols;
+    chartIndex = Math.max(0, currentList.indexOf(sym));
+    document.getElementById("chartModal").classList.add("open");
+    renderChartFor(currentList[chartIndex] || sym);
+  }
+
+  function closeChart() {
+    stopPlay();
+    document.getElementById("chartModal").classList.remove("open");
+  }
+
+  function stepChart(delta) {
+    const currentList = longsOnly ? symbols.filter(s => signals[s] && signals[s].state === "long") : symbols;
+    if (currentList.length === 0) return;
+    chartIndex = (chartIndex + delta + currentList.length) % currentList.length;
+    renderChartFor(currentList[chartIndex]);
+  }
+
+  function stopPlay() {
+    if (playTimer) { clearInterval(playTimer); playTimer = null; }
+    document.getElementById("chartPlayBtn").textContent = "▶";
+  }
+
+  function togglePlay() {
+    if (playTimer) {
+      stopPlay();
+    } else {
+      playTimer = setInterval(() => stepChart(1), 3500);
+      document.getElementById("chartPlayBtn").textContent = "⏸";
+    }
+  }
+
+  (function setupSwipe() {
+    const area = document.getElementById("chartContainer");
+    let startX = null, startY = null;
+    area.addEventListener("touchstart", (e) => {
+      startX = e.touches[0].clientX; startY = e.touches[0].clientY;
+    }, { passive: true });
+    area.addEventListener("touchend", (e) => {
+      if (startX == null) return;
+      const dx = e.changedTouches[0].clientX - startX;
+      const dy = e.changedTouches[0].clientY - startY;
+      if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+        stopPlay();
+        stepChart(dx < 0 ? 1 : -1);
+      }
+      startX = null; startY = null;
+    }, { passive: true });
+  })();
+
+  // ---------- wire up ----------
+  document.getElementById("settingsBtn").addEventListener("click", () => {
+    const panel = document.getElementById("settingsPanel");
+    panel.classList.contains("open") ? closeSettings() : openSettings();
+  });
+  document.getElementById("closeSettingsBtn").addEventListener("click", closeSettings);
+  document.getElementById("acctPaper").addEventListener("click", () => setAccountToggle("paper"));
+  document.getElementById("acctLive").addEventListener("click", () => setAccountToggle("live"));
+  document.getElementById("saveSettingsBtn").addEventListener("click", async () => {
+    settings.keyId = document.getElementById("apiKeyId").value.trim();
+    settings.secret = document.getElementById("apiSecret").value.trim();
+    settings.proxy = document.getElementById("corsProxy").value.trim();
+    settings.account = document.getElementById("acctLive").classList.contains("active") ? "live" : "paper";
+    await saveSettings();
+    updateSubline();
+    closeSettings();
+    showBanner("Settings saved.", "info");
+  });
+
+  document.getElementById("syncBtn").addEventListener("click", openSync);
+  document.getElementById("closeSyncBtn").addEventListener("click", closeSync);
+  document.getElementById("importSelectedBtn").addEventListener("click", importSelected);
+
+  document.getElementById("addSymbolBtn").addEventListener("click", addSymbol);
+  document.getElementById("addSymbolInput").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") addSymbol();
+  });
+
+  document.getElementById("filterLongBtn").addEventListener("click", (e) => {
+    longsOnly = !longsOnly;
+    e.target.classList.toggle("primary", longsOnly);
+    e.target.textContent = longsOnly ? "Show all" : "Longs only";
+    render();
+  });
+
+  document.getElementById("refreshBtn").addEventListener("click", refreshAll);
+
+  document.getElementById("chartOpenBtn").addEventListener("click", () => {
+    const currentList = longsOnly ? symbols.filter(s => signals[s] && signals[s].state === "long") : symbols;
+    if (currentList.length === 0) {
+      showBanner(longsOnly ? "No long setups to chart." : "Add a symbol first.", "info");
+      return;
+    }
+    openChart(currentList[0]);
+  });
+  document.getElementById("chartCloseBtn").addEventListener("click", closeChart);
+  document.getElementById("chartPrevBtn").addEventListener("click", () => { stopPlay(); stepChart(-1); });
+  document.getElementById("chartNextBtn").addEventListener("click", () => { stopPlay(); stepChart(1); });
+  document.getElementById("chartPlayBtn").addEventListener("click", togglePlay);
+
+  // ---------- boot ----------
+  (async function init() {
+    await loadState();
+    updateSubline();
+    render();
+    if (settings.keyId && settings.secret) {
+      refreshAll();
+    } else {
+      showBanner("Add your Alpaca paper-trading API key in Settings, then tap Refresh all.", "info");
+    }
+  })();
+
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("./sw.js").catch((e) => {
+        console.warn("Service worker registration failed:", e);
+      });
+    });
+  }
+
+})();
+</script>
+</body>
+</html>
