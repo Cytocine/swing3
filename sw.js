@@ -3,7 +3,7 @@
 // loading, but NEVER caches Alpaca API responses — market data must always be live.
 const CACHE_VERSION = "trend-watch-v2";
 const SHELL_ASSETS = [
-  "./alpaca-watchlist.html",
+  "./index.html",
   "./manifest.json",
   "./icon-192.png",
   "./icon-512.png",
