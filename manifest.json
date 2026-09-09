@@ -2,7 +2,7 @@
   "name": "Trend Watch — Alpaca Watchlist",
   "short_name": "Trend Watch",
   "description": "LinReg/EMA cloud swing-trend scanner for an Alpaca watchlist",
-  "start_url": "./index.html",
+  "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
